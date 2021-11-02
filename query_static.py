@@ -344,13 +344,13 @@ if __name__ == "__main__":
     main()
 
 start = time()
-processor = Processor(r"C:\Users\aozsa\Documents\OutputComesHere",
-                      r"C:\Users\aozsa\Documents\Github\IR\Project2\queryfile.txt",
-                      "lm", "stem")
+    processor = Processor(r".\data\index",
+                          r".\data\queryfile.txt",
+                          "lm", "stem")
 results = processor.run()
 finish = time()
 print(finish-start)
-results_file = r"C:\Users\aozsa\Documents\Github\IR\Project2\result1.txt"
+results_file = r".\data\result.txt"
 with open(results_file, 'w') as w:
     for query in results:
         for result in query[:100]:
@@ -373,7 +373,7 @@ test.sort()
 
 
 
-query_file_path = r"C:\Users\aozsa\Documents\Github\IR\Project2\queryfile.txt"
+query_file_path = r".\data\queryfile.txt"
 queries = qparse.query_parser(query_file_path)
 tokenized = tokenize(queries)
 q = Query(tokenized[3][0], tokenized[3][1], "single", 2)

@@ -404,16 +404,16 @@ for i in range(4):
 
 for i in range(20):
     threshold = (i + 1)
-    processor = Processor(r"C:\Users\aozsa\Documents\OutputComesHere",
-                          r"C:\Users\aozsa\Documents\Github\IR\Project2\queryfile.txt",
+    processor = Processor(r".\data\index",
+                          r".\data\queryfile.txt",
                           output_threshold=threshold)
     yes, outputs = processor.test()
     print(f"{threshold}")
 
 
 start = time()
-processor = Processor(r"C:\Users\aozsa\Documents\OutputComesHere",
-                      r"C:\Users\aozsa\Documents\Github\IR\Project2\queryfile.txt")
+processor = Processor(r".\data\index",
+                      r".\data\queryfile.txt",
 results = processor.test()
 finish = time()
 #print(finish-start)
