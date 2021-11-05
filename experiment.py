@@ -5,21 +5,16 @@ from file2doc import Tokenizer
 from nltk.stem.porter import *
 import numpy as np
 from time import time
-import subprocess
-import os
 
-"""pre-defined stop word list"""
 stop_words = []
-stop_path = r".\data\stops.txt"
+stop_path = r"\data\stops.txt"
 with open(stop_path) as f:
     for line in f:
         stop_words.append(line.strip('\n'))
 stop_words = set(stop_words)
 
 def main():
-    """
-    parse arguments, instantiate Processor class, and run the query
-    """
+    
     parser = argparse.ArgumentParser()
     parser.add_argument("index_directory_path", type=str,
                         help="path for the directory containing index files")
@@ -38,6 +33,7 @@ def main():
     parser.add_argument("--evaluate", action="store_true", default=False,
                         help="this will print the treceval output.")
 
+
     args = parser.parse_args()
     index_path = args.index_directory_path
     query_path = args.query_file_path
@@ -47,14 +43,10 @@ def main():
     threshold = args.threshold
     verbose = args.verbose
     evaluate = args.evaluate
-    
-    os.makedirs(os.path.dirname(results_file), exist_ok=True)
 
-    start = time()
     processor = Processor(index_path, query_path, results_file, n_gram, window,
                           threshold, verbose)
     results = processor.run()
-    finish = time()
     with open(results_file, 'w') as w:
         for doc in results:
             for result in doc[:100]:
@@ -62,8 +54,6 @@ def main():
                 w.write(line)
     if evaluate:
         processor.evaluation()
-    if verbose:
-        print(f"query processing time: {round(finish-start, 3)} seconds")
 
 def _generate_line(file):
     with open(file) as f:
@@ -93,9 +83,6 @@ class Processor:
         self.verbose = verbose
 
     def run(self):
-        """
-        dynamic adjustment of index type
-        """
         outputs = []
         for i, q in enumerate(self.queries_tokenized):
             output = []
@@ -117,7 +104,7 @@ class Processor:
                 else:
                     if self.verbose:
                         print("phrase not common, switching to proximity search")
-                    output = self.positional_bm25(q_num, q_terms)
+                    output = self.positional_bm25(q_num, q_terms, window_size=self.window_size)
                     if len(output) < self.retrieval_threshold:
                         if self.verbose:
                             print("not enough documents retrieved, switching to single index")
@@ -128,10 +115,12 @@ class Processor:
                     print("query too short, switching to single index")
                 q_terms = self.preprocess(query, "single")
                 output = self.bm25(q_num, q_terms, "single")
+
             outputs.append(output)
+
         return outputs
 
-    def tokenize(self):  # simple whitespace-based tokenization
+    def tokenize(self):
         queries_tokenized = []
         for query in self.queries:
             query_tokenized = [query[0]]
@@ -144,7 +133,7 @@ class Processor:
             queries_tokenized.append(query_tokenized)
         return queries_tokenized
 
-    def preprocess(self, q_terms, index_type):  # index_type-specific preprocessing
+    def preprocess(self, q_terms, index_type):
         preprocessed = []
         if index_type == "single":
             preprocessed = [term.strip('\n') for term in q_terms if re.search(r"[a-zA-Z0-9]", term) is not None and term not in stop_words]
@@ -153,7 +142,7 @@ class Processor:
         elif index_type == "phrase":
             window = []
             while len(q_terms) > 0:
-                while len(window) < self.n_gram and len(q_terms) > 0:
+                while len(window) < self.n_gram:
                     window.append(q_terms[0].strip("\n"))
                     q_terms.pop(0)
                 is_phrase = True
@@ -168,7 +157,7 @@ class Processor:
                     window = window[1:]
         return preprocessed
 
-    def make_posting_list_dict(self, index_type):  # read posting list and create dict object
+    def make_posting_list_dict(self, index_type):
         posting_list_dict = dict()
         doc_pl_dict = dict()
         prev_tid = 0
@@ -191,7 +180,7 @@ class Processor:
             doc_pl_dict[did].append((tid, tf))
         return posting_list_dict, doc_pl_dict
 
-    def make_positional_posting_list_dict(self):  # read positional posting list and create dict obejct
+    def make_positional_posting_list_dict(self):
         positional_posting_list_dict = dict()
         positional_doc_pl_dict = dict()
         prev_tid = 0
@@ -211,7 +200,7 @@ class Processor:
             positional_doc_pl_dict[did].append((tid, positions))
         return positional_posting_list_dict, positional_doc_pl_dict
     
-    def make_lexicon_dict(self, index_type):  # read lexicon file and create dict object
+    def make_lexicon_dict(self, index_type):
         lexicon_dict = dict()
         if index_type == "phrase":
             file_name = f"{self.n_gram}_gram_lexicon.txt"
@@ -225,7 +214,7 @@ class Processor:
             lexicon_dict[term] = tid
         return lexicon_dict
 
-    def make_doc_dict(self):  # read document id - document name mapping and create dict object
+    def make_doc_dict(self):
         doc_dict = dict()
         docs = _generate_line(self.index_path + r"\\" + "doc_map.txt")
         for doc in docs:
@@ -236,7 +225,7 @@ class Processor:
             doc_dict[did] = (doc_name, doc_length)
         return doc_dict
 
-    def bm25(self, q_num, q_terms, index_type):  # bm25 calculation
+    def bm25(self, q_num, q_terms, index_type):
         if index_type == "phrase":
             posting_list_dict = self.phrase_posting_list_dict
             doc_pl_dict = self.phrase_doc_pl_dict
@@ -267,7 +256,7 @@ class Processor:
             output.append([str(q_num), '0', self.doc_dict[did][0], str(i+1), str(scores[did]), "bm25"])
         return output
 
-    def positional_bm25(self, q_num, q_terms):  # bm25 for proximity search
+    def positional_bm25(self, q_num, q_terms, window_size=20):
         scores = dict()
         N = len(self.doc_dict)
         b = 0.75
@@ -285,7 +274,7 @@ class Processor:
                 if len(doc_cands) == 0:
                     cands_exist = False
                 
-            if cands_exist:  # find terms within the specified window size using sliding windows
+            if cands_exist:
                 
                 n = len(doc_cands)
                 idf = np.log((N - n + 0.5) / (n + 0.5))
@@ -302,13 +291,13 @@ class Processor:
                         start_position = start_pointer[1]
                         window = [start_tid]
                         for current_i, current_pointer in enumerate(pointers[start_i+1:]):
-                            if current_pointer[1] <= (start_position + self.window_size):
+                            if current_pointer[1] <= (start_position + window_size):
                                 window.append(current_pointer[0])
                             if current_i == len(pointers[start_i+1:])-1:
                                 if len(set(window)) == self.n_gram:
                                     tf += 1
                                 break                                
-                            elif current_pointer[1] > (start_position + self.window_size):  
+                            elif current_pointer[1] > (start_position + window_size):  
                                 if len(set(window)) == self.n_gram:
                                     tf += 1
                                 break
@@ -328,8 +317,8 @@ class Processor:
 
     def evaluation(self):
         results_file = self.results_file
-        treceval_fp = r".\bin\treceval.exe"
-        qrels_fp = r".\data\qrel.txt"
+        treceval_fp = ".\bin\treceval.exe"
+        qrels_fp = ".\data\qrel.txt"
         cmd = ['./{}'.format(treceval_fp), qrels_fp, results_file]
         try:
             proc = subprocess.Popen(
@@ -339,7 +328,134 @@ class Processor:
             print(msg_out)
         except Exception:
             raise
+        
+        
+        
+    def bigrun(self):
+        outputs = []
+        for i, q in enumerate(self.queries_tokenized):
+            output = []
+            print(f"{i+1}/{len(self.queries_tokenized)} being processed")
+            q_num = q[0]
+            query = q[1]
+            query_backup = []
+            for term in query:
+                query_backup.append(term)
+            if len(query) >= self.n_gram:
+                q_terms = self.preprocess(query, "phrase")
+                q_tids = [self.phrase_lexicon_dict[term] for term in q_terms if term in self.phrase_lexicon_dict]
+                total_df = 0
+                for tid in q_tids:
+                    total_df += len(self.phrase_posting_list_dict[tid])
+                if total_df >= 2:
+                    output = self.bm25(q_num, q_terms, "phrase")
+                else:
+                    print("phrase not common, switching to proximity search")
+                    output = self.positional_bm25(q_num, q_terms)
+                    if len(output) < 5:
+                        print("not enough documents retrieved, switching to single index")
+                        q_terms = self.preprocess(query_backup, "single")
+                        output = self.bm25(q_num, q_terms, "single")
+            else:
+                print("query too short, switching to single index")
+                q_terms = self.preprocess(query, "single")
+                output = self.bm25(q_num, q_terms, "single")
+
+            outputs.append(output)
+
+        return outputs
+
+    def test(self):
+        outputs = []
+        yes = 0
+        for i, q in enumerate(self.queries_tokenized):
+            output = []
+            print(f"{i+1}/{len(self.queries_tokenized)} being processed")
+            q_num = q[0]
+            query = q[1]
+            query_backup = []
+            for term in query:
+                query_backup.append(term)
+            if len(query) >= self.n_gram:
+                q_terms = self.preprocess(query, "phrase")
+                q_tids = [self.phrase_lexicon_dict[term] for term in q_terms if term in self.phrase_lexicon_dict]
+                total_df = 0
+                for tid in q_tids:
+                    total_df += len(self.phrase_posting_list_dict[tid])
+                output = self.bm25(q_num, q_terms, "phrase")
+                if len(output) >= self.output_threshold:
+                    yes += 1
+            outputs.append(output)
+        print(yes)
+        return yes, outputs
 
 
-if __name__ == "__main__":
-    main()
+#if __name__ == "__main__":
+#    main()
+
+from collections import defaultdict
+import subprocess
+import os
+import re
+
+
+exp = defaultdict(lambda: defaultdict(lambda: 0))
+results_file = r"C:\Users\aozsa\Documents\Github\IR\Project2\result.txt"
+treceval_fp = "treceval.exe"
+qrels_fp = "qrel.txt"
+for i in range(4):
+    window = (i + 1) *5
+    for j in range(20):
+        threshold = j + 1
+        processor = Processor(r"C:\Users\aozsa\Documents\OutputComesHere",
+                              r"C:\Users\aozsa\Documents\Github\IR\Project2\queryfile.txt",
+                              window_size=window, retrieval_threshold=threshold)
+        results = processor.run()
+        with open(results_file, 'w') as w:
+            for query in results:
+                for result in query[:100]:
+                    line = " ".join(result) + '\n'
+                    w.write(line)
+        cmd = ['./{}'.format(treceval_fp), qrels_fp, results_file]
+        try:
+            proc = subprocess.Popen(
+                cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE        )
+            resp = proc.communicate()
+            msg_out, msg_err = (msg.decode('utf-8') for msg in resp)
+            subbed = re.sub(r"[\t\n\s]", "", msg_out)
+            match = re.search(r"overallreldocs(0.[0-9]+)Precision", subbed)
+            MAP = match[1]
+            exp[window][threshold] = MAP
+        except Exception:
+            raise
+        
+        print(f"window_size = {window}, threshold = {threshold}, acc = {MAP}")
+
+
+for i in range(20):
+    threshold = (i + 1)
+    processor = Processor(r".\data\index",
+                          r".\data\queryfile.txt",
+                          output_threshold=threshold)
+    yes, outputs = processor.test()
+    print(f"{threshold}")
+
+
+start = time()
+processor = Processor(r".\data\index",
+                      r".\data\queryfile.txt",
+results = processor.test()
+finish = time()
+#print(finish-start)
+
+dataframe = []
+for key in exp:
+    this_row = [key]
+    for key2 in exp[key]:
+        this_row.append(exp[key][key2])
+    dataframe.append(this_row)
+
+import pandas as pd
+df = pd.DataFrame(dataframe)
+df.to_excel("thisone.xlsx")
+dataframe = pd

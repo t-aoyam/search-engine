@@ -49,6 +49,8 @@ def _doc_generator(lines):
     text = False
     doc = ([],[])
     for line in lines:
+        if line.startswith(r"</TEXT>"):
+            text = False
         if line.startswith("<DOCNO>"):
             match = re.match(r"<DOCNO>(.+)</DOCNO>", line)
             doc_id = match[1].strip()
@@ -67,8 +69,6 @@ def _doc_generator(lines):
                     doc[1].append(line)
         if line.startswith(r"<TEXT>"):
             text = True
-        elif line.startswith(r"</TEXT>"):
-            text = False
         elif line.startswith(r"</DOC>"):
             yield doc
             doc = ([],[])
