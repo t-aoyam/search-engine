@@ -7,10 +7,11 @@ import numpy as np
 from time import time
 import subprocess
 import os
+from pathlib import Path
 
 """pre-defined stop word list"""
 stop_words = []
-stop_path = r".\data\stops.txt"
+stop_path = Path("data/stops.txt")
 with open(stop_path) as f:
     for line in f:
         stop_words.append(line.strip('\n'))
@@ -61,7 +62,8 @@ def main():
                 line = " ".join(result) + '\n'
                 w.write(line)
     if evaluate:
-        processor.evaluation()
+        out = processor.evaluation()
+        print(out)
     if verbose:
         print(f"query processing time: {round(finish-start, 3)} seconds")
 
@@ -73,12 +75,12 @@ def _generate_line(file):
 class Processor:
     def __init__(self, index_path, query_path, results_file, n_gram,
                  window_size, retrieval_threshold, verbose):
-        self.queries = qparse.query_parser(query_path)
+        self.index_path = Path(index_path)
+        self.query_path = Path(query_path)
+        self.queries = qparse.query_parser(self.query_path)
         self.queries_tokenized = self.tokenize()
         self.queries_tokenized.sort()
-        self.index_path = index_path
-        self.query_path = query_path
-        self.results_file = results_file
+        self.results_file = Path(results_file)
         self.n_gram = n_gram
         self.window_size = window_size
         self.retrieval_threshold = retrieval_threshold
@@ -176,7 +178,7 @@ class Processor:
             file_name = f"{self.n_gram}_gram_posting_list.txt"
         else:
             file_name = f"{index_type}_posting_list.txt"
-        pls = _generate_line(self.index_path + r"\\" + file_name)
+        pls = _generate_line(self.index_path / file_name)
         for pl in pls:
             line = [int(item) for item in pl.strip("\n").split("\t")]
             tid = line[0]
@@ -196,7 +198,7 @@ class Processor:
         positional_doc_pl_dict = dict()
         prev_tid = 0
         file_name = "positional_posting_list.txt"
-        pls = _generate_line(self.index_path + r"\\" + file_name)
+        pls = _generate_line(self.index_path / file_name)
         for pl in pls:
             line = [item for item in pl.strip("\n").split("\t")]
             tid = int(line[0])
@@ -217,7 +219,7 @@ class Processor:
             file_name = f"{self.n_gram}_gram_lexicon.txt"
         else:
             file_name = f"{index_type}_lexicon.txt"
-        lexes = _generate_line(self.index_path + r"\\" + file_name)
+        lexes = _generate_line(self.index_path / file_name)
         for lex in lexes:
             line = [item for item in lex.strip("\n").split("\t") if item != '']
             tid = int(line[0])
@@ -227,7 +229,7 @@ class Processor:
 
     def make_doc_dict(self):  # read document id - document name mapping and create dict object
         doc_dict = dict()
-        docs = _generate_line(self.index_path + r"\\" + "doc_map.txt")
+        docs = _generate_line(self.index_path / "doc_map.txt")
         for doc in docs:
             line = [item for item in doc.strip("\n").split("\t") if item != '']
             did = int(line[0])
@@ -327,18 +329,18 @@ class Processor:
         return output
 
     def evaluation(self):
-        results_file = self.results_file
-        treceval_fp = r".\bin\treceval.exe"
-        qrels_fp = r".\data\qrel.txt"
-        cmd = ['./{}'.format(treceval_fp), qrels_fp, results_file]
+        results_file = self.results_file.__str__()
+        treceval_fp = Path("bin/treceval.exe").__str__()
+        qrels_fp = Path("data/qrel.txt").__str__()
+        cmd = [treceval_fp, qrels_fp, results_file]
         try:
             proc = subprocess.Popen(
                 cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE        )
             resp = proc.communicate()
             msg_out, msg_err = (msg.decode('utf-8') for msg in resp)
-            print(msg_out)
         except Exception:
             raise
+        return msg_out
 
 
 if __name__ == "__main__":

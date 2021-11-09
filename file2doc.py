@@ -1,5 +1,6 @@
 import re
 import os
+from pathlib import Path
 
 """
 pre-defined set of vocabulary to be used later
@@ -17,7 +18,7 @@ def doc_writer(input_path, out_dir):
     put all internal functions below together here, so that this function
     can be called and used from outside.
     """
-    doc_dir = out_dir + r"\\doc_files"
+    doc_dir = out_dir / "doc_files"
     if os.path.isdir(doc_dir) is False:
         os.mkdir(doc_dir)
     lines = _generate_line(input_path)
@@ -25,7 +26,7 @@ def doc_writer(input_path, out_dir):
     for doc in docs:
         doc_id = doc[0][0]
         doc_text = " ".join(doc[1])
-        out_path = doc_dir + r"\\" + doc_id + r".txt"
+        out_path = doc_dir / f"{doc_id}.txt"
         doc = Doc(doc_id, doc_text)
         tokens = doc._tokenization()
         with open(out_path, "w") as out:
@@ -51,11 +52,11 @@ def _doc_generator(lines):
     for line in lines:
         if line.startswith(r"</TEXT>"):
             text = False
-        if line.startswith("<DOCNO>"):
+        elif line.startswith("<DOCNO>"):
             match = re.match(r"<DOCNO>(.+)</DOCNO>", line)
             doc_id = match[1].strip()
             doc[0].append(doc_id)
-        if text:
+        elif text:
             if re.search(r"(<!--.*-->)", line) is None:
                 if re.search(r"<.+>(.+)</.+>", line) is not None:
                     match = re.search(r"<.+>(.+)</.+>", line)

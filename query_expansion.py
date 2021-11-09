@@ -7,11 +7,10 @@ from nltk.stem.porter import *
 import numpy as np
 from time import time
 import subprocess
-from pathlib import Path
 
 stemmer = PorterStemmer()
 stop_words = []
-stop_path = Path("data/stops.txt")
+stop_path = r".\data\stops.txt"
 with open(stop_path) as f:
     for line in f:
         stop_words.append(line.strip('\n'))
@@ -49,8 +48,8 @@ def main():
     os.makedirs(os.path.dirname(results_file), exist_ok=True)
 
     start = time()
-    processor = Processor(index_path, query_path, model,
-                          index_type, results_file, verbose)
+    processor = Processor(index_path, query_path, model, index_type,
+                          top_n_term, top_m_doc, num_iter, results_file, verbose)
     results = processor.run()
     with open(results_file, 'w') as w:
         for doc in results:
@@ -70,13 +69,14 @@ def _generate_line(file):
             yield line
 
 class Processor:
-    def __init__(self, index_path, query_path, model, index_type, results_file, verbose):
-        self.index_path = Path(index_path)
-        self.query_path = Path(query_path)
-        self.results_file = Path(results_file)
-        self.queries = qparse.query_parser(self.query_path)
+    def __init__(self, index_path, query_path, model, index_type,
+                 top_n_term, top_m_doc, num_iter, results_file, verbose):
+        self.queries = qparse.query_parser(query_path)
         self.queries_tokenized = self.tokenize()
         self.queries_tokenized.sort()
+        self.index_path = index_path
+        self.query_path = query_path
+        self.results_file = results_file
         self.model = model
         self.index_type = index_type
         if index_type != "positional":        
@@ -85,18 +85,33 @@ class Processor:
         self.lexicon_dict = self.make_lexicon_dict()
         if model == "bm25" or model == "lm":
             self.mean_doc_length = sum([self.doc_dict[doc][1] for doc in self.doc_dict]) / len(self.doc_dict)
+        self.top_n_term = top_n_term
+        self.top_m_doc = top_m_doc
+        self.num_iter = num_iter
         self.verbose = verbose
 
     def run(self):
         outputs = []
         for q_num, query in self.queries_tokenized:
             q_terms = self.preprocess(query)
-            if self.model == "cosine":
-                outputs.append(self.cosine(q_num, q_terms))
-            elif self.model == "bm25":
-                outputs.append(self.bm25(q_num, q_terms))
-            elif self.model == "lm":
-                outputs.append(self.lm(q_num, q_terms))
+            num_iter = self.num_iter
+            q_tids = [self.lexicon_dict[term] for term in q_terms if term in self.lexicon_dict]
+            while num_iter >= 0:
+                if self.model == "cosine":
+                    rel_rank = self.cosine(q_tids)
+                elif self.model == "bm25":
+                    rel_rank = self.bm25(q_tids)
+                elif self.model == "lm":
+                    rel_rank = self.lm(q_tids)
+                num_iter -= 1
+                if num_iter >= 0:
+                    cands = self.rel_fb(rel_rank)
+                    q_tids = set(q_tids)
+                    q_tids.update(set(cands))
+                    q_tids = list(q_tids)
+                    print(q_tids)
+            output = self.res2trec(q_num, rel_rank)
+            outputs.append(output)
         return outputs
 
     def tokenize(self):
@@ -144,7 +159,7 @@ class Processor:
             file_name = f"{self.n_gram}_gram_posting_list.txt"
         else:
             file_name = f"{self.index_type}_posting_list.txt"
-        pls = _generate_line(self.index_path / file_name)
+        pls = _generate_line(self.index_path + r"\\" + file_name)
         for pl in pls:
             line = [int(item) for item in pl.strip("\n").split("\t")]
             tid = line[0]
@@ -162,7 +177,7 @@ class Processor:
     def make_lexicon_dict(self):  # read lexicon file and create dict object
         lexicon_dict = dict()
         file_name = f"{self.index_type}_lexicon.txt"
-        lexes = _generate_line(self.index_path / file_name)
+        lexes = _generate_line(self.index_path + r"\\" + file_name)
         for lex in lexes:
             line = [item for item in lex.strip("\n").split("\t") if item != '']
             tid = int(line[0])
@@ -172,7 +187,7 @@ class Processor:
 
     def make_doc_dict(self):  # read document id - document name map and create dict object
         doc_dict = dict()
-        docs = _generate_line(self.index_path / "doc_map.txt")
+        docs = _generate_line(self.index_path + r"\\" + "doc_map.txt")
         for doc in docs:
             line = [item for item in doc.strip("\n").split("\t") if item != '']
             did = int(line[0])
@@ -181,9 +196,8 @@ class Processor:
             doc_dict[did] = (doc_name, doc_length)
         return doc_dict
 
-    def cosine(self, q_num, q_terms):  # cosine calculation
+    def cosine(self, q_tids):  # cosine calculation
         scores = dict()
-        q_tids = [self.lexicon_dict[term] for term in q_terms if term in self.lexicon_dict]
         for tid in q_tids:  # numerator
             self.posting_list = self.posting_list_dict[tid]
             idf = np.log10(len(self.doc_dict)/len(self.posting_list))
@@ -202,17 +216,13 @@ class Processor:
                 nf += (tf*idf)**2
             nf = np.sqrt(nf)
             scores[did] /= nf
-        output = []
-        for i, did in enumerate(sorted(scores, key=scores.get, reverse=True)):            
-            output.append([str(q_num), '0', self.doc_dict[did][0], str(i+1), str(scores[did]), str(self.model)])
-        return output
+        return scores
     
-    def bm25(self, q_num, q_terms):  # bm25 calculation
+    def bm25(self, q_tids):  # bm25 calculation
         scores = dict()
         N = len(self.doc_dict)
         b = 0.75
         k = 1.2
-        q_tids = [self.lexicon_dict[term] for term in q_terms if term in self.lexicon_dict]
         for tid in q_tids:  # numerator
             posting_list = self.posting_list_dict[tid]
             n = len(posting_list)
@@ -225,16 +235,12 @@ class Processor:
                 if did not in scores:
                     scores[did] = 0
                 scores[did] += score
-        output = []
-        for i, did in enumerate(sorted(scores, key=scores.get, reverse=True)):            
-            output.append([str(q_num), '0', self.doc_dict[did][0], str(i+1), str(scores[did]), str(self.model)])
-        return output
+        return scores
 
-    def lm(self, q_num, q_terms):  # language model with dirichlet smoothing
+    def lm(self, q_tids):  # language model with dirichlet smoothing
         scores = dict()
         C = sum([sum([doc[1] for doc in self.posting_list_dict[tid]]) for tid in list(self.lexicon_dict.values())])
         mu = self.mean_doc_length
-        q_tids = [self.lexicon_dict[term] for term in q_terms if term in self.lexicon_dict]
         relevant_docs = set()
         for tid in q_tids:
             relevant_docs.update(set([pl[0] for pl in self.posting_list_dict[tid]]))
@@ -258,16 +264,43 @@ class Processor:
                     if did not in scores:
                         scores[did] = 0
                     scores[did] += score
+        return scores
+
+    def res2trec(self, q_num, scores):
         output = []
         for i, did in enumerate(sorted(scores, key=scores.get, reverse=True)):            
-            output.append([str(q_num), '0', self.doc_dict[did][0], str(i+1), str(scores[did]), str(self.model)])
-        return output        
+            output.append([str(q_num), '0', self.doc_dict[did][0],
+                           str(i+1), str(scores[did]), str(self.model)])
+        return output    
+
+    def rel_fb(self, scores):
+        nidf = dict()  # df in relevant set
+        fidf = dict()  # cf in relevant set
+        rel_docs = list(scores.keys())[:self.top_m_doc]
+        for doc in rel_docs:
+            for tid, tf in self.doc_pl_dict[doc]:
+                if tid not in nidf:
+                    nidf[tid] = 0
+                nidf[tid] += 1
+                if tid not in fidf:
+                    fidf[tid] = 0
+                fidf[tid] += tf
+        for tid in nidf:
+            N = len(self.doc_dict)
+            n = len(self.posting_list_dict[tid])
+#            idf = np.log(N/n)
+            idf = np.log((N - n + 0.5) / (n + 0.5))
+            nidf[tid] *= idf
+            fidf[tid] *= idf
+        cands = sorted(nidf, key=nidf.get, reverse=True)[:self.top_n_term]
+#        cands = sorted(fidf, key=fidf.get, reverse=True)[:self.top_n_term]
+        return cands
 
     def evaluation(self):
-        results_file = self.results_file.__str__()
-        treceval_fp = Path("bin/treceval.exe").__str__()
-        qrels_fp = Path("data/qrel.txt").__str__()
-        cmd = [treceval_fp, qrels_fp, results_file]
+        results_file = self.results_file
+        treceval_fp = r".\bin\treceval.exe"
+        qrels_fp = r".\data\qrel.txt"
+        cmd = ['./{}'.format(treceval_fp), qrels_fp, results_file]
         try:
             proc = subprocess.Popen(
                 cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE        )
@@ -277,5 +310,21 @@ class Processor:
             raise
         return msg_out
 
-if __name__ == "__main__":
-    main()
+#if __name__ == "__main__":
+#    main()
+
+results_file = r".\data\test.txt"
+processor = Processor(r".\data\index", r".\data\queryfile.txt", 'bm25', 'single',
+                      2, 50, 1, results_file, True)
+
+results = processor.run()
+with open(results_file, 'w') as w:
+    for doc in results:
+        for result in doc[:100]:
+            line = " ".join(result) + '\n'
+            w.write(line)
+
+evl = processor.evaluation()
+lex = processor.lexicon_dict
+#processor.queries_tokenized
+print(evl)

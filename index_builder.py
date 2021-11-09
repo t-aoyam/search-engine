@@ -5,12 +5,13 @@ import argparse
 import time
 import inverted_index
 import file2doc
+from pathlib import Path
 
 """
 reading stop_words and making a set
 """
 stop_words = []
-stop_path = r".\data\stops.txt"
+stop_path = Path("data/stops.txt")
 with open(stop_path) as f:
     for line in f:
         stop_words.append(line.strip('\n'))
@@ -57,9 +58,9 @@ def main():
 class IndexBuilder:
     def __init__(self, trec_path, index_type, out_dir, n_gram,
                  mmry_cstrt, noparse, nostats, verbose):
-        self.trec_path = trec_path
+        self.trec_path = Path(trec_path)
         self.index_type = index_type
-        self.out_dir = out_dir
+        self.out_dir = Path(out_dir)
         self.n_gram = n_gram
         self.mmry_cstrt = mmry_cstrt
         self.nostats = nostats
@@ -84,7 +85,7 @@ class IndexBuilder:
         """
         print("\nbuilding indices")
         start_temp = time.time()
-        doc_map_path = self.out_dir + r"\\" + "doc_map.txt"
+        doc_map_path = self.out_dir / "doc_map.txt"
         if self.index_type == "single":
             if os.path.isfile(doc_map_path) is False:
                 inv_ind = self._build_single()
@@ -109,24 +110,24 @@ class IndexBuilder:
         """
         print("\nmerging posting lists")
         start_merge = time.time()
-        if len(os.listdir(self.out_dir + r"\\" + "pls")) == 1:
+        if len(os.listdir(self.out_dir / "pls")) == 1:
             if self.index_type == "phrase":
-                shutil.copy(self.out_dir + r"\\pls\\pl_0.txt",
-                            self.out_dir + r"\\" + f"{self.n_gram}_gram_posting_list.txt")
+                shutil.copy(self.out_dir / "pls/pl_0.txt",
+                            self.out_dir / f"{self.n_gram}_gram_posting_list.txt")
             else:
-                shutil.copy(self.out_dir + r"\\pls\\pl_0.txt",
-                            self.out_dir + r"\\" + f"{self.index_type}_posting_list.txt")
+                shutil.copy(self.out_dir / "pls/pl_0.txt",
+                            self.out_dir / f"{self.index_type}_posting_list.txt")
         else:
             if self.index_type == "positional":
                 merged = self._m_way_merge_positional()
             else:
                 merged = self._m_way_merge()
             if self.index_type == "phrase":
-                with open(self.out_dir + r"\\" + f"{self.n_gram}_gram_posting_list.txt", "w") as out:
+                with open(self.out_dir / f"{self.n_gram}_gram_posting_list.txt", "w") as out:
                     for pl in merged:
                         out.write("\t".join([str(item) for item in pl]) + "\n")
             else:
-                with open(self.out_dir + r"\\" + f"{self.index_type}_posting_list.txt", "w") as out:
+                with open(self.out_dir / f"{self.index_type}_posting_list.txt", "w") as out:
                     for pl in merged:
                         out.write("\t".join([str(item) for item in pl]) + "\n")     
         finish_merge = time.time()
@@ -158,19 +159,19 @@ class IndexBuilder:
         for i, file in enumerate(files):
             if self.verbose:
                 print(f"processing {i+1}/{len(files)}")
-            file_path = self.trec_path + r"\\" + file
+            file_path = self.trec_path / file
             file2doc.doc_writer(file_path, self.out_dir)
-    
+
     def _build_single(self):
         n = 0  # to keep track of the number of intermediate posting list files
-        doc_dir = self.out_dir + r"\\" + "doc_files"
+        doc_dir = self.out_dir / "doc_files"
         doc_files = os.listdir(doc_dir)
         inv_ind = inverted_index.InvertedIndex(mmry_cstrt=self.mmry_cstrt)
         for i, doc_file in enumerate(doc_files):
             if self.verbose:
                 print(f"processing {i+1}/{len(doc_files)}")
             inv_ind.read_doc(doc_file)
-            tokens = self._generate_line(doc_dir + r"\\" + doc_file)
+            tokens = self._generate_line(doc_dir / doc_file)
             doc_length = 0
             for token in tokens:
                 doc_length += 1
@@ -187,19 +188,19 @@ class IndexBuilder:
                 if i == len(doc_files) - 1:
                     self._output(inv_ind.posting_list, n)
                     inv_ind.posting_list = set()
-        self._write_lexicon(self.out_dir + r"\\" + "single_lexicon.txt", inv_ind.lexicon)
+        self._write_lexicon(self.out_dir / "single_lexicon.txt", inv_ind.lexicon)
         return inv_ind
 
     def _build_stem(self):
         n = 0  # to keep track of the number of intermediate posting list files
-        doc_dir = self.out_dir + r"\\" + "doc_files"
+        doc_dir = self.out_dir / "doc_files"
         doc_files = os.listdir(doc_dir)
         inv_ind = inverted_index.InvertedIndex(mmry_cstrt=self.mmry_cstrt, stem=True)
         for i, doc_file in enumerate(doc_files):
             if self.verbose:
                 print(f"processing {i+1}/{len(doc_files)}")
             inv_ind.read_doc(doc_file)
-            tokens = self._generate_line(doc_dir + r"\\" + doc_file)
+            tokens = self._generate_line(doc_dir / doc_file)
             for token in tokens:
                 if re.search(r"[a-zA-Z0-9]", token) is not None:                
                     inv_ind.update_index(token.strip('\n'))
@@ -213,20 +214,20 @@ class IndexBuilder:
                 if i == len(doc_files) - 1:
                     self._output(inv_ind.posting_list, n)
                     inv_ind.posting_list = set()
-        self._write_lexicon(self.out_dir + r"\\" + "stem_lexicon.txt", inv_ind.lexicon)
+        self._write_lexicon(self.out_dir / "stem_lexicon.txt", inv_ind.lexicon)
         return inv_ind
     
     
     def _build_positional(self):
         n = 0  # to keep track of the number of intermediate posting list files
-        doc_dir = self.out_dir + r"\\" + "doc_files"
+        doc_dir = self.out_dir / "doc_files"
         doc_files = os.listdir(doc_dir)
         inv_ind = inverted_index.InvertedIndex(mmry_cstrt=self.mmry_cstrt, exclude_stop_words=False)
         for i, doc_file in enumerate(doc_files):
             if self.verbose:
                 print(f"processing {i+1}/{len(doc_files)}")
             inv_ind.read_doc(doc_file)
-            tokens = self._generate_line(doc_dir + r"\\" + doc_file)
+            tokens = self._generate_line(doc_dir / doc_file)
             for j, token in enumerate(tokens):
                 if re.search(r"[a-zA-Z0-9]", token) is not None:
                     inv_ind.update_positional_index(j, token.strip('\n'))
@@ -240,12 +241,12 @@ class IndexBuilder:
                 if i == len(doc_files) - 1:
                     self._output(inv_ind.posting_list, n)
                     inv_ind.posting_list = set()
-        self._write_lexicon(self.out_dir + r"\\" + "positional_lexicon.txt", inv_ind.lexicon)
+        self._write_lexicon(self.out_dir / "positional_lexicon.txt", inv_ind.lexicon)
         return inv_ind
     
     def _build_phrase(self):
         n = 0  # to keep track of the number of intermediate posting list files
-        doc_dir = self.out_dir + r"\\" + "doc_files"
+        doc_dir = self.out_dir / "doc_files"
         doc_files = os.listdir(doc_dir)
         inv_ind = inverted_index.InvertedIndex(mmry_cstrt=self.mmry_cstrt)
         for i, doc_file in enumerate(doc_files):
@@ -253,7 +254,7 @@ class IndexBuilder:
                 print(f"processing {i+1}/{len(doc_files)}")
             inv_ind.read_doc(doc_file)
             window = []
-            with open(doc_dir + r"\\" + doc_file) as tokens:
+            with open(doc_dir / doc_file) as tokens:
                 token = "dummy"  # just so that while loop can start
                 while token:
                     while len(window) < self.n_gram:
@@ -279,7 +280,7 @@ class IndexBuilder:
                 if i == len(doc_files) - 1:
                     self._output(inv_ind.posting_list, n)
                     inv_ind.posting_list = set()
-        self._write_lexicon(self.out_dir + r"\\" + f"{self.n_gram}_gram_lexicon.txt", inv_ind.lexicon)
+        self._write_lexicon(self.out_dir / f"{self.n_gram}_gram_lexicon.txt", inv_ind.lexicon)
         return inv_ind
     
     def _generate_line(self, file):
@@ -291,8 +292,8 @@ class IndexBuilder:
         pl_list = list(pl_list)
         pl_list.sort(key=lambda x: x[1])
         pl_list.sort()
-        pl_dir = self.out_dir + r"\\" + "pls"
-        out_path = pl_dir + r"\\" + f"pl_{n}.txt"
+        pl_dir = self.out_dir / "pls"
+        out_path = pl_dir / f"pl_{n}.txt"
         if os.path.isdir(pl_dir) is False:
             os.mkdir(pl_dir)
         with open(out_path, "w") as out:
@@ -316,14 +317,14 @@ class IndexBuilder:
         return pl_list
     
     def _m_way_merge(self):
-        pl_dir = self.out_dir + r"\\" + "pls"
+        pl_dir = self.out_dir / "pls"
         itrmdt_pls = os.listdir(pl_dir)
         name_orders = [(int(itrmdt_pl.strip(".txt").split("_")[1]), itrmdt_pl) for itrmdt_pl in itrmdt_pls]
         name_orders.sort()
         itrmdt_pls = [name_order[1] for name_order in name_orders]
         temps = []
         for itrmdt_pl in itrmdt_pls:
-            temps.append(open(pl_dir + r"\\" + itrmdt_pl))
+            temps.append(open(pl_dir / itrmdt_pl))
         total = len(temps)
         m_lines = []
         final = []
@@ -348,7 +349,7 @@ class IndexBuilder:
                             m_lines.pop(i)
                             temps[i].close()
                             temps.pop(i)
-                            os.remove(pl_dir + r"\\" + itrmdt_pls[i])
+                            os.remove(pl_dir / itrmdt_pls[i])
                             itrmdt_pls.pop(i)
                             if self.verbose:
                                 print(f"{len(temps)}/{total} left!")
@@ -361,14 +362,14 @@ class IndexBuilder:
         return final
     
     def _m_way_merge_positional(self):
-        pl_dir = self.out_dir + r"\\" + "pls"
+        pl_dir = self.out_dir / "pls"
         itrmdt_pls = os.listdir(pl_dir)
         name_orders = [(int(itrmdt_pl.strip(".txt").split("_")[1]), itrmdt_pl) for itrmdt_pl in itrmdt_pls]
         name_orders.sort()
         itrmdt_pls = [name_order[1] for name_order in name_orders]
         temps = []
         for itrmdt_pl in itrmdt_pls:
-            temps.append(open(pl_dir + r"\\" + itrmdt_pl))
+            temps.append(open(pl_dir / itrmdt_pl))
         total = len(temps)
         m_lines = []
         final = []
@@ -395,7 +396,7 @@ class IndexBuilder:
                             m_lines.pop(i)
                             temps[i].close()
                             temps.pop(i)
-                            os.remove(pl_dir + r"\\" + itrmdt_pls[i])
+                            os.remove(pl_dir / itrmdt_pls[i])
                             itrmdt_pls.pop(i)
                             if self.verbose:
                                 print(f"{len(temps)}/{total} left!")
@@ -410,8 +411,8 @@ class IndexBuilder:
     def _cf_filter(self, threshold=1):
         lexicon = dict()
         posting_list = dict()
-        lexs_path = (self.out_dir + r"\\" + f"{self.n_gram}_gram_lexicon.txt")
-        pls_path = (self.out_dir + r"\\" + f"{self.n_gram}_gram_posting_list.txt")
+        lexs_path = (self.out_dir / f"{self.n_gram}_gram_lexicon.txt")
+        pls_path = (self.out_dir / f"{self.n_gram}_gram_posting_list.txt")
         prev_tid = 0
         pls = self._generate_line(pls_path)
         for pl in pls:
@@ -453,8 +454,8 @@ class IndexBuilder:
         posting_list = dict()
         prev_tid = 0
         if self.index_type == "positional":
-            pls = self._generate_line(self.out_dir + r"\\" + f"{self.index_type}_posting_list.txt")
-            lexs = self._generate_line(self.out_dir + r"\\" + f"{self.index_type}_lexicon.txt")
+            pls = self._generate_line(self.out_dir / f"{self.index_type}_posting_list.txt")
+            lexs = self._generate_line(self.out_dir / f"{self.index_type}_lexicon.txt")
             for pl in pls:
                 line = pl.strip("\n").split("\t")
                 tf = len([position for position in line[2].split(",") if len(position) > 0]) # omitting empty string
@@ -465,11 +466,11 @@ class IndexBuilder:
                 prev_tid = tid
         else:
             if self.index_type == "phrase":
-                pls = self._generate_line(self.out_dir + r"\\" + f"{self.n_gram}_gram_posting_list.txt")
-                lexs = self._generate_line(self.out_dir + r"\\" + f"{self.n_gram}_gram_lexicon.txt")
+                pls = self._generate_line(self.out_dir / f"{self.n_gram}_gram_posting_list.txt")
+                lexs = self._generate_line(self.out_dir / f"{self.n_gram}_gram_lexicon.txt")
             else:
-                pls = self._generate_line(self.out_dir + r"\\" + f"{self.index_type}_posting_list.txt")
-                lexs = self._generate_line(self.out_dir + r"\\" + f"{self.index_type}_lexicon.txt")        
+                pls = self._generate_line(self.out_dir / f"{self.index_type}_posting_list.txt")
+                lexs = self._generate_line(self.out_dir / f"{self.index_type}_lexicon.txt")        
             for pl in pls:
                 line = [int(item) for item in pl.strip("\n").split("\t")]
                 tf = line[2]

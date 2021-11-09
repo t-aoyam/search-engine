@@ -1,10 +1,8 @@
 import re
 
-query_file_path = r"C:\Users\aozsa\Documents\Github\IR\Project2\queryfile.txt"
-
 def query_parser(path):
     queries = []
-    lines = _generate_line(query_file_path)
+    lines = _generate_line(path)
     for line in lines:
         if line.startswith("<num>"):
             match = re.search(r"Number: ([0-9]+)", line)
