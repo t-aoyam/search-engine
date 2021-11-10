@@ -3,7 +3,7 @@ from nltk.stem.porter import *
 stemmer = PorterStemmer()
 
 stop_words = []
-stop_path = Path("data\stops.txt")
+stop_path = Path("data/stops.txt")
 with open(stop_path) as f:
     for line in f:
         stop_words.append(line.strip('\n'))
