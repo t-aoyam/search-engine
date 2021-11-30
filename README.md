@@ -46,3 +46,23 @@
 
   - example: `python  query_dynamic.py  data\index  data\queryfile.txt  data\result.txt  -n 2 -w 5 -t 10 --verbose --evaluate`
     - This will run the dynamic query processing using 2-term phrase index and the proximity search with window size of 5, with the retrieval threshold value of 10. This will  write out the relevance ranking to a text file called “result.txt" and will also print out details of the process and the evaluation result onto the terminal.
+
+## Query Reformulation
+  - usage: `python query_expansion_reduction.py [index_directory_path] [query_file_path] [retrieval_model] [index_type] [--n_doc] [--m_term] [--num_iter] [--q_threshold] [results_file] [--long] [--verbose] [--evaluate] [--show]`
+    - `[index_directory_path]`: path of the directory that contains all lexicon and posting list files.
+    - `[query_file_path]`: path of the query file.
+    - `[retrieval_model]`: retrieval model: `cosine`, `bm25`, or `lm`.
+    - `[index_type]`: index type: `single` or `stem`.
+    - `[results_file]`: path of output file, where the generated relevance ranking will be written out.
+    - `[--n_doc] [-n]`: top _n_ documents to retrieve expansion terms from. default is 10.
+    - `[--m_term] [-m]`: top _m_ terms to expand the query terms by. default is 3.
+    - `[--num_iter] [-i]`: number of query expansion iteration. default is 0 (no expansion).
+    - `[--q_threshold] [-q]`: top 100*_p_ % of the query terms will be used. default is 1 (no reduction).
+    - `[--long]`: an option to use long query. default is False (short query).
+    - `[--verbose]`: an option to print every step of the process.
+    - `[--evaluate]`: an option to print the evaluation using treceval.exe.
+    - `[--show]`: this will show what query term was added and/or removed.
+    - For more details, run: `python query_static.py --help`
+
+  - example: `python  query_expansion_reduction.py  data\index  data\queryfile.txt cosine single data\result.txt  -n 4 -m 17 -i 1 -q 0.4 --long --verbose --evaluate --show`
+    - This will run the program that sends queries to single term index; retrieve documents using cosine measure, and write the relevance ranking onto a file called result.txt. The query terms will be first reduced to top 40% (-q 0.4), and one iteration (-i 1) of query expansion will be performed using top 4 retrieved documents (-n 4), adding top 17 terms (-m 17) to the original query. Also, this command will print details of the process and print the evaluation result on the terminal, while showing sets of original, removed, and added terms on the terminal.
