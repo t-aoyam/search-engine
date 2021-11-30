@@ -63,6 +63,6 @@
     - `[--evaluate]`: an option to print the evaluation using treceval.exe.
     - `[--show]`: this will show what query term was added and/or removed.
     - For more details, run: `python query_static.py --help`
-
+    - For expansion-only model with short query (Report 1), make sure to specify `-q 1` (no reduction) and to exclude `--long` (short query). For reduction-only model with long query (Report 2), make sure to specify `-i 0` (expansion) and to specify `--long` (long query).
   - example: `python  query_expansion_reduction.py  data\index  data\queryfile.txt cosine single data\result.txt  -n 4 -m 17 -i 1 -q 0.4 --long --verbose --evaluate --show`
     - This will run the program that sends queries to single term index; retrieve documents using cosine measure, and write the relevance ranking onto a file called result.txt. The query terms will be first reduced to top 40% (-q 0.4), and one iteration (-i 1) of query expansion will be performed using top 4 retrieved documents (-n 4), adding top 17 terms (-m 17) to the original query. Also, this command will print details of the process and print the evaluation result on the terminal, while showing sets of original, removed, and added terms on the terminal.
